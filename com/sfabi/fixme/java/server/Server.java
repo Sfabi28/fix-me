@@ -9,8 +9,7 @@ import java.nio.channels.SelectionKey;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.HashMap;
-import java.nio.channels.SocketChannel;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class Server { //classe fatta singleton cosi' un unico server presente nel programma
 	private static final Server INSTANCE = new Server();
@@ -34,6 +33,15 @@ public class Server { //classe fatta singleton cosi' un unico server presente ne
 	private ServerSocketChannel market;
 
 	private Map<String, SocketChannel> table = new HashMap<>();
+
+	private String generateUniqueClientId() {
+		String id;
+		do {
+			id = String.valueOf(ThreadLocalRandom.current().nextInt(100000, 1000000));
+		} while (table.containsKey(id));
+		return id;
+	}
+
 	public void start() {
 
 		initializeSelector();
@@ -73,7 +81,21 @@ public class Server { //classe fatta singleton cosi' un unico server presente ne
 				}
 
 				if (key.isAcceptable()) {
-					// è arrivata una nuova connessione su una ServerSocketChannel
+					try {
+						ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+						SocketChannel client = serverChannel.accept();
+
+						if (client != null) {
+							client.configureBlocking(false);
+							SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
+
+							String clientId = generateUniqueClientId();
+							table.put(clientId, client);
+							clientKey.attach(clientId);
+						}
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 
 				if (key.isReadable()) {
