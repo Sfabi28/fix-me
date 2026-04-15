@@ -5,13 +5,14 @@ import java.net.InetSocketAddress;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.nio.ByteBuffer;
+
+import com.sfabi.fixme.java.server.Client.ClientSession;
 
 public class Server { //classe fatta singleton cosi' un unico server presente nel programma
 	private static final Server INSTANCE = new Server();
@@ -89,11 +90,13 @@ public class Server { //classe fatta singleton cosi' un unico server presente ne
 
 						if (client != null) {
 							client.configureBlocking(false);
-							SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ);
+							SelectionKey clientKey = client.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
 							String clientId = generateUniqueClientId();
 							table.put(clientId, client);
-							clientKey.attach(clientId);
+							ClientSession session = new ClientSession(clientId, client);
+							session.enqueueWrite(ByteBuffer.wrap(clientId.getBytes()));
+							clientKey.attach(session);
 						}
 					} catch (IOException e) {
 						e.printStackTrace();
@@ -105,7 +108,19 @@ public class Server { //classe fatta singleton cosi' un unico server presente ne
 				}
 
 				if (key.isWritable()) {
-					// puoi inviare dati a un client
+					ClientSession session = (ClientSession) key.attachment();
+					if (session != null && !session.getWriteQueue().isEmpty()) {
+						ByteBuffer buffer = session.getWriteQueue().peek();
+						try {
+							SocketChannel ch = (SocketChannel) key.channel();
+							ch.write(buffer);
+							if (!buffer.hasRemaining()) {
+								session.getWriteQueue().poll();
+							}
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
 				}
 			}
 		}
